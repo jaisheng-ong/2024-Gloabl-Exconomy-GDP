@@ -1,4 +1,4 @@
-# 2024-Gloabl-Exconomy-GDP
+# 2024-Gloabl-Economy-GDP
 
 **Description**:
 
