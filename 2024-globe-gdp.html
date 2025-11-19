@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2024 Global GDP - 3D Visualization</title>
+    <style>
+        body { 
+            margin: 0; 
+            padding: 0; 
+            background-color: #000; 
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            overflow: hidden; /* Prevent scrollbars */
+        }
+        #globeViz { 
+            width: 100vw; 
+            height: 100vh; 
+        }
+        
+        /* UI Overlays */
+        .overlay-title {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            pointer-events: none; /* Click through text to rotate globe */
+            z-index: 10;
+        }
+        h1 {
+            margin: 0;
+            font-weight: 300;
+            text-shadow: 0 0 10px rgba(0,0,0,0.8);
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+        p {
+            color: #aaa;
+            font-size: 0.9rem;
+            margin-top: 5px;
+        }
+
+        /* Legend Styling */
+        .legend {
+            position: absolute;
+            bottom: 30px;
+            left: 20px;
+            color: #eee;
+            background: rgba(0,0,0,0.75);
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 13px;
+            pointer-events: none;
+            border: 1px solid #333;
+            backdrop-filter: blur(5px);
+        }
+        .legend-item {
+            margin-bottom: 5px;
+            display: flex;
+            align-items: center;
+        }
+        .color-box {
+            display: inline-block;
+            width: 15px;
+            height: 15px;
+            margin-right: 10px;
+            border-radius: 3px;
+        }
+    </style>
+
+    <!-- External Libraries -->
+    <script src="https://unpkg.com/d3@7"></script> <!-- For color scales -->
+    <script src="https://unpkg.com/globe.gl"></script> <!-- 3D Globe Engine -->
+</head>
+<body>
+
+    <div class="overlay-title">
+        <h1>The Global Economy 2024</h1>
+        <p>Projected Nominal GDP (IMF Estimates in Trillions USD)</p>
+    </div>
+
+    <div class="legend">
+        <div style="margin-bottom:10px; font-weight:bold; color:#fff;">Economic Scale</div>
+        <div class="legend-item"><span class="color-box" style="background:#ff3333"></span> > $10T (Super Giants)</div>
+        <div class="legend-item"><span class="color-box" style="background:#ff8800"></span> $4T - $10T (Major Powers)</div>
+        <div class="legend-item"><span class="color-box" style="background:#ffcc00"></span> $1T - $4T (Large Economies)</div>
+        <div class="legend-item"><span class="color-box" style="background:#44aa88"></span> $200B - $1T (Mid-Tier)</div>
+        <div class="legend-item"><span class="color-box" style="background:#225544"></span> < $200B / No Data</div>
+    </div>
+
+    <div id="globeViz"></div>
+
+    <script>
+        // 1. GDP DATA (2024 IMF Projections - Key Countries)
+        // ISO Alpha-3 Codes are used to map data to the GeoJSON geography
+        const gdpData = {
+            "USA": { gdp: 28.78, name: "United States" },
+            "CHN": { gdp: 18.53, name: "China" },
+            "DEU": { gdp: 4.59, name: "Germany" },
+            "JPN": { gdp: 4.11, name: "Japan" },
+            "IND": { gdp: 3.94, name: "India" },
+            "GBR": { gdp: 3.50, name: "United Kingdom" },
+            "FRA": { gdp: 3.13, name: "France" },
+            "BRA": { gdp: 2.33, name: "Brazil" },
+            "ITA": { gdp: 2.33, name: "Italy" },
+            "CAN": { gdp: 2.24, name: "Canada" },
+            "RUS": { gdp: 2.06, name: "Russia" },
+            "MEX": { gdp: 2.02, name: "Mexico" },
+            "AUS": { gdp: 1.79, name: "Australia" },
+            "KOR": { gdp: 1.76, name: "South Korea" },
+            "ESP": { gdp: 1.65, name: "Spain" },
+            "IDN": { gdp: 1.54, name: "Indonesia" },
+            "TUR": { gdp: 1.34, name: "Turkey" },
+            "SAU": { gdp: 1.11, name: "Saudi Arabia" },
+            "NLD": { gdp: 1.09, name: "Netherlands" },
+            "CHE": { gdp: 0.93, name: "Switzerland" },
+            "POL": { gdp: 0.86, name: "Poland" },
+            "TWN": { gdp: 0.80, name: "Taiwan" },
+            "BEL": { gdp: 0.66, name: "Belgium" },
+            "SWE": { gdp: 0.63, name: "Sweden" },
+            "ARG": { gdp: 0.60, name: "Argentina" },
+            "THA": { gdp: 0.58, name: "Thailand" },
+            "NGA": { gdp: 0.25, name: "Nigeria" }, // Adjusted based on currency fluctuations
+            "EGY": { gdp: 0.35, name: "Egypt" },
+            "ZAF": { gdp: 0.38, name: "South Africa" },
+            "VNM": { gdp: 0.47, name: "Vietnam" }
+        };
+
+        // Color Scale: Maps GDP values to specific colors
+        const colorScale = d3.scaleThreshold()
+            .domain([0.2, 1, 4, 10])
+            .range(["#225544", "#44aa88", "#ffcc00", "#ff8800", "#ff3333"]);
+
+        // 2. INITIALIZE GLOBE
+        const world = Globe()
+            (document.getElementById('globeViz'))
+            
+            // Visual Settings
+            .globeImageUrl('https://unpkg.com/three-globe/example/img/earth-night.jpg') // Night texture
+            .backgroundImageUrl('https://unpkg.com/three-globe/example/img/night-sky.png') // Starry background
+            .pointOfView({ lat: 20, lng: 0, altitude: 2.5 }) // Initial camera position
+
+            // 3. LOAD POLYGON DATA (Countries)
+            .polygonsData([], {
+                idField: 'ISO_A3',
+                transitionDuration: 1000
+            });
+
+        // Fetch GeoJSON borders from an open-source repo
+        fetch('https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_admin_0_countries.geojson')
+            .then(res => res.json())
+            .then(countries => {
+                // Filter out Antarctica for cleaner look
+                const data = countries.features.filter(d => d.properties.ISO_A3 !== "ATA");
+
+                world.polygonsData(data)
+                    
+                    // --- CONFIGURING THE 3D POLYGONS ---
+                    
+                    // A. Altitude: Higher GDP = Higher extrusion
+                    .polygonAltitude(d => {
+                        const code = d.properties.ISO_A3;
+                        const countryData = gdpData[code];
+                        // Minimum height 0.01, max scaled by GDP
+                        return countryData ? Math.min(countryData.gdp * 0.004, 0.12) + 0.01 : 0.01; 
+                    })
+
+                    // B. Color: Based on GDP scale
+                    .polygonCapColor(d => {
+                        const code = d.properties.ISO_A3;
+                        const countryData = gdpData[code];
+                        return countryData ? colorScale(countryData.gdp) : '#1a1a1a'; // Dark gray if no data
+                    })
+
+                    // C. Side Color: Slightly transparent
+                    .polygonSideColor(() => 'rgba(100, 100, 100, 0.15)')
+                    
+                    // D. Hover Effect
+                    .onPolygonHover(hoverD => {
+                        world
+                            .polygonAltitude(d => {
+                                const code = d.properties.ISO_A3;
+                                const baseAlt = gdpData[code] ? Math.min(gdpData[code].gdp * 0.004, 0.12) + 0.01 : 0.01;
+                                return d === hoverD ? baseAlt + 0.04 : baseAlt; // Pop up on hover
+                            })
+                            .polygonCapColor(d => {
+                                const code = d.properties.ISO_A3;
+                                // Turn white on hover, otherwise use normal color
+                                return d === hoverD ? '#ffffff' : (gdpData[code] ? colorScale(gdpData[code].gdp) : '#1a1a1a');
+                            });
+                    })
+
+                    // E. Tooltip (HTML Label)
+                    .polygonLabel(({ properties: d }) => {
+                        const code = d.ISO_A3;
+                        const countryData = gdpData[code];
+                        
+                        if (countryData) {
+                            return `
+                                <div style="
+                                    background: rgba(0,0,0,0.85); 
+                                    padding: 12px; 
+                                    border-radius: 6px; 
+                                    color: white; 
+                                    border: 1px solid #444;
+                                    font-family: sans-serif;
+                                    box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+                                ">
+                                    <div style="font-size: 1.1em; font-weight: bold; margin-bottom: 4px;">${countryData.name}</div>
+                                    <div style="color: #4dd0e1; font-size: 0.9em;">GDP: $${countryData.gdp} Trillion</div>
+                                    <div style="font-size: 0.7em; color: #888; margin-top:4px;">(2024 Projection)</div>
+                                </div>
+                            `;
+                        } else {
+                            return `
+                                <div style="background: rgba(0,0,0,0.8); padding: 8px; border-radius: 4px; color: #bbb;">
+                                    ${d.NAME} <br> <span style="font-size:10px">No detailed data</span>
+                                </div>
+                            `;
+                        }
+                    });
+            });
+
+        // Auto-rotate the globe
+        world.controls().autoRotate = true;
+        world.controls().autoRotateSpeed = 0.6;
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            world.width(window.innerWidth).height(window.innerHeight);
+        });
+
+    </script>
+</body>
+</html>
